@@ -1,6 +1,6 @@
 \-------------------------------------------------------------------------
 \ TD1 Temporal Discrimination Training
-\ Version: 1.31
+\ Version: 1.41
 \ Created by Shaun Khoo (25 July 2019)
 \ >('.')<
 \ http://orcid.org/0000-0002-0972-3788
@@ -10,8 +10,8 @@
 \CONTROL CONSTANTS
 ^Trials = 40		\Number of trials of each type
 ^TimeToFirstTrial = 15	\Time before first trial in (s)
-^ShortTime = 5		\Length of the short cue (s)
-^LongTime = 20		\Length of the long cue (s)
+^ShortTime = 30		\Length of the short cue (s) [Will be divided by 10]
+^LongTime = 120		\Length of the long cue (s) [will be divided by 10]
 ^NoResponseTime = 5	\Seconds until the trial is recorded as an ommission
 ^Pairing = 1		\Pairing of cue length and manipulanda:
 			\0 = Pairing selected by BOX ID
@@ -19,9 +19,11 @@
 			\2 = Long cue paired with Left Nosepoke (Even Boxes Default)
 ^StandardLength = 0	\Specify a standard session length (s)
 			\This will scale the last ITI so that lasts until the session ends
-^ForcedPercent = 10	\Percentage of trials that will be forced correct
+^ForcedPercent = 0	\Percentage of trials that will be forced correct
 ^ForcedTimeLimit = 300	\Time in seconds until a forced trial will end. Set to 0 for unlimited.
-^Version = 131		\Version number, will be divided by 100
+^HighHzHandling = 1	\0 = None, 1 = Warn, 2 = Remove
+^MaxResponseHz = 5	\Maximum response frequency; if greater than this, will add to warnings or ignore nosepoke	
+^Version = 141		\Version number, will be divided by 100
 
 \Inputs
 ^LeftNose = 1
@@ -54,8 +56,8 @@
 ^EventPremCorrect = 11
 ^EventPremIncorrect = 12
 ^EventMagazineCue = 13
-^EventNoseAvailable = 20
 ^EventForcedTrial = 19
+^EventNoseAvailable = 20
 ^EventCorrect = 21
 ^EventIncorrect = 22
 ^EventTrialMagazine = 23
@@ -90,14 +92,15 @@ DIM A = 50
 \A(17) = Magazine entries during ITIs
 \A(18) = Magazine entries before first trial
 \A(19) = Percent correct responses (%C)
-\A(20) = Percent incorrect responses (%B)
+\A(20) = Percent incorrect responses (%I)
 \A(21) = Percent omissions (%O)
 \A(22) = Elapsed Session Time (s)
 \A(23) = Side preference (% left)
 \A(24) = Left nosepokes
 \A(25) = Right Nosepokes
-\A(W+26) = Presentations of each cue type (includes forced trials)
-
+\A(26) = Short-paired nosepoke high frequency warnings
+\A(27) = Long-paired nosepoke high frequency warnings
+\A(W+28) = Presentations of each cue type (includes forced trials)
 
 \DATA - EVENT LOG
 DIM B = 10000		\All event times,				subscript Y/X(16)
@@ -115,9 +118,9 @@ DIM I = 1000		\Incorrect Nosepokes,				subscript Y/X(21)
 DIM J = 1000		\Magazine entries,				subscript Y/X(21)
 
 \DATA - RESULTS BY CUE LENGTH
-DIM K = 300		\Correct nosepoke,				subscript W; %C Y/W + X(6); Forced Latency Y/W + 2*X(6)
-DIM L = 300		\Incorrect nosepoke,				subscript W; %B Y/W + X(6); Total Forced Latency Y/W + 2*X(6)
-DIM M = 300		\Omission,					subscript W; %O Y/W + X(6); Number Forced Trials Y/W + 2*X(6)
+DIM K = 300		\Correct nosepoke,				subscript W; %C Y/W + X(6); Forced Latency Y/W + 2*X(6); A, aka short-paired T/W+3*X(6); %A, aka %short-paired Y/W + 4*X(6);
+DIM L = 300		\Incorrect nosepoke,				subscript W; %I Y/W + X(6); Total Forced Latency Y/W + 2*X(6); B, aka long-paired T/W+3*X(6); %B, aka %long-paired Y/W + 4*X(6);
+DIM M = 300		\Omission,					subscript W; %O Y/W + X(6); Number Forced Trials Y/W + 2*X(6);
 DIM N = 100		\Premature correct,				subscript W
 DIM O = 100		\Premature incorrect,				subscript W
 DIM P = 100		\Perseverations correct,			subscript W
@@ -143,7 +146,7 @@ LIST U = 5, 20
 LIST V = 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 
 \CONTROL VARIABLES - WORKING VARIABLES
-DIM X = 21
+DIM X = 24
 \X(0) = Session Clock
 \X(1) = Centisecond Clock
 \X(2) = Cue presentation time
@@ -168,9 +171,12 @@ DIM X = 21
 \X(19) = Subscript for F array
 \X(20) = Subscript for G array
 \X(21) = Subscript for H, I and J arrays
+\X(22) = High Frequency Time
+\X(23) = High Frequency Time 1
+\X(24) = High Frequency Time 2
 
 \CONTROL VARIABLES - SESSION PARAMETERS
-DIM Z = 13
+DIM Z = 15
 var_alias Trials = Z(0)
 var_alias Time to First Trial (s) = Z(1)
 var_alias Short Cue Time (s) = Z(2)
@@ -184,7 +190,9 @@ var_alias LongCue Nose Light = Z(9)
 var_alias Standard Session Length (s) = Z(10)
 var_alias Forced Trials Percent = Z(11)
 var_alias Forced Trial Expiry (s) = Z(12)
-var_alias Program Version = Z(13)
+var_alias High Frequency Response = Z(13)
+var_alias High Frequency Definition (Hz) = Z(14)
+var_alias Program Version = Z(15)
 
 \DATA MANAGEMENT
 DISKVARS = A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, U, V, Z
@@ -197,10 +205,11 @@ Y2KCOMPLIANT
 
 S.S.1,
 S1,	\State 1 sets the default variable values
-	0.01": SET Z(0) = ^Trials, Z(1) = ^TimeToFirstTrial, Z(2) = ^ShortTime;
-	SET Z(3) = ^LongTime, Z(4) = ^NoResponseTime, Z(5) = ^Pairing;
+	0.01": SET Z(0) = ^Trials, Z(1) = ^TimeToFirstTrial, Z(2) = ^ShortTime / 10;
+	SET Z(3) = ^LongTime / 10, Z(4) = ^NoResponseTime, Z(5) = ^Pairing;
 	SET Z(10) = ^StandardLength, Z(11) = ^ForcedPercent;
-	SET Z(12) = ^ForcedTimeLimit, Z(13) = ^Version / 100;
+	SET Z(12) = ^ForcedTimeLimit, Z(13) = ^HighHzHandling;
+	SET Z(14) = ^MaxResponseHz, Z(15) = ^Version / 100;
 
 	\Non-response first value for timecourse arrays
 	SET D(0) = -1, E(0) = -1, F(0) = -1, G(0) = -1;
@@ -215,10 +224,10 @@ S1,	\State 1 sets the default variable values
 	SET X(6) = W;
 
 	\Then seal the K-R arrays based on the size of the U array
-	SET K(3*W) = -987.987, L(3*W) = -987.987, M(3*W) = -987.987;
+	SET K(5*W) = -987.987, L(5*W) = -987.987, M(3*W) = -987.987;
 	SET N(W) = -987.987, O(W) = -987.987, P(W) = -987.987;
 	SET Q(W) = -987.987, R(W) = -987.987;
-	SET A(W+26) = -987.987;
+	SET A(W+28) = -987.987;
 
 	IF Z(5) = 0 [@ASSIGN, @CHECK]
 		@ASSIGN: SET Y = BOX / 2; ~Y := Frac(Y);~;	\Determine if the box number is even or odd
@@ -292,7 +301,7 @@ S1,	\State 1 waits for the start command
 		SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 		ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 		SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-		ON ^Houselight; ADD A(W+26), X(8);		
+		ON ^Houselight; ADD A(W+28), X(8);		
 		IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
 			@INTERMEDIATE: WITHPI = 5000 [@SHORT, @LONG]
 				@SHORT: Z^IntermediateShort ---> S3
@@ -304,7 +313,7 @@ S2,	\State 2 waits to present the first cue
 	SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-	ON ^Houselight; ADD A(W+26), X(8); IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
+	ON ^Houselight; ADD A(W+28), X(8); IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
 		@INTERMEDIATE: WITHPI = 5000 [@SHORT, @LONG]
 			@SHORT: Z^IntermediateShort ---> S3
 			@LONG: Z^IntermediateLong ---> S3
@@ -342,17 +351,22 @@ S4,	\State 4 waits either for a response or for the no response time limit to re
 	SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 	SHOW 4, Omissions, A(2);
 
-	\Calculate the %Correct, %B (incorrect) and %omissions
+	\Calculate the %Correct, %Incorrect and %Omissions
 	SET A(19) = A(0) / (A(0) + A(1) + A(2)) * 100;
 	SET A(20) = A(1) / (A(0) + A(1) + A(2)) * 100;
 	SET A(21) = A(2) / (A(0) + A(1) + A(2)) * 100;
 
-	\Calculate the %C, %B and %O for this cue length
+	\Calculate the %Correct, %Incorrect and %Omissions for this cue length
 	SET Y = W + X(6);
 	SET K(Y) = K(W) / (K(W) + L(W) + M(W)) * 100;
 	SET L(Y) = L(W) / (K(W) + L(W) + M(W)) * 100;
 	SET M(Y) = M(W) / (K(W) + L(W) + M(W)) * 100;
-
+	
+	\Calculate %A (%short-paired), %B (%long-paired) for this cue length
+	SET T = W + 3*X(6), Y = W + 4*X(6);
+	SET K(Y) = K(T) / (K(T) + L(T) + M(W)) * 100;
+	SET L(Y) = L(T) / (K(T) + L(T) + M(W)) * 100;
+	
 	\It will then set the ITI for the next trial and record its length
 	RANDD X(4) = V; SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventITIlength + X(4) / 100;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
@@ -381,12 +395,12 @@ S5,	\State 5 waits to deliver the next cue
 	\It will first check if this cue has not been presented too many times
 	\If it needs to reselect the cue, it will display an error and try again twice
 	\If it fails on the 3rd attempt it will throw an error and will try again on the next interrupt
-	X(4)#T: RANDD W = S; IF A(W+26) < Z(0) [@PROCEED, @RESELECT]
+	X(4)#T: RANDD W = S; IF A(W+28) < Z(0) [@PROCEED, @RESELECT]
 		@PROCEED: SET X(2) = U(W) * 1";
 		SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 		ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 		SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-		ON ^Houselight; ADD A(W+26), X(8), X(21);
+		ON ^Houselight; ADD A(W+28), X(8), X(21);
 		SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 		SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 		IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -395,12 +409,12 @@ S5,	\State 5 waits to deliver the next cue
 				@LONG: Z^IntermediateLong ---> S3
 			@PROCEED: Z^StartCS ---> S3
 		@RESELECT: ADD X(9); SHOW 10, Cue Selection Error, X(9);
-		RANDD W = S; IF A(W+26) < Z(0) [@PROCEED, @RESELECT]
+		RANDD W = S; IF A(W+28) < Z(0) [@PROCEED, @RESELECT]
 			@PROCEED: SET X(2) = U(W) * 1";
 			SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 			ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 			SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-			ON ^Houselight; ADD A(W+26), X(8), X(21);
+			ON ^Houselight; ADD A(W+28), X(8), X(21);
 			SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 			SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 			IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -409,12 +423,12 @@ S5,	\State 5 waits to deliver the next cue
 					@LONG: Z^IntermediateLong ---> S3
 				@PROCEED: Z^StartCS ---> S3
 			@RESELECT: ADD X(9); SHOW 10, Cue Selection Error, X(9);
-			RANDD W = S; IF A(W+26) < Z(0) [@PROCEED, @FAIL]
+			RANDD W = S; IF A(W+28) < Z(0) [@PROCEED, @FAIL]
 				@PROCEED: SET X(2) = U(W) * 1";
 				SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 				ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 				SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-				ON ^Houselight; ADD A(W+26), X(8), X(21);
+				ON ^Houselight; ADD A(W+28), X(8), X(21);
 				SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 				SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 				IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -488,7 +502,10 @@ S2,	\State 2 waits to shift to the cue
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 
 	\Timestamp the response in the short-paired nosepoke timecourse array
-	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987 ---> SX
+	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987;
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S12
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
 		@SHORT: ---> S3
@@ -504,7 +521,10 @@ S3,	\State 3 records premature correct responses during short cues
 	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987;
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD H(Y), N(W) ---> SX
+	SET Y = X(21); ADD H(Y), N(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S13
+		@NULL: ---> SX
 
 	#Z^EndCS: ON Z(8) ---> S4
 	#Z^ForcedTrial: ON Z(8) ---> S9
@@ -518,18 +538,23 @@ S4,	\State 4 records a correct response to a short cue
 	SHOW 2, Correct Responses, A(0);
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD H(Y), K(W);
+	SET Y = X(21), T = W + 3*X(6); ADD H(Y), K(W), K(T);
 
-	\Calculate the %Correct, %B (incorrect) and %omissions
+	\Calculate the %Correct, %Incorrect and %Omissions
 	SET A(19) = A(0) / (A(0) + A(1) + A(2)) * 100;
 	SET A(20) = A(1) / (A(0) + A(1) + A(2)) * 100;
 	SET A(21) = A(2) / (A(0) + A(1) + A(2)) * 100;
 
-	\Calculate the %C, %B and %O for this cue length
+	\Calculate the %Correct, %Incorrect and %Omissions for this cue length
 	SET Y = W + X(6);
 	SET K(Y) = K(W) / (K(W) + L(W) + M(W)) * 100;
 	SET L(Y) = L(W) / (K(W) + L(W) + M(W)) * 100;
 	SET M(Y) = M(W) / (K(W) + L(W) + M(W)) * 100;
+	
+	\Calculate %A (%short-paired), %B (%long-paired) for this cue length
+	SET Y = W + 4*X(6);
+	SET K(Y) = K(T) / (K(T) + L(T) + M(W)) * 100;
+	SET L(Y) = L(T) / (K(T) + L(T) + M(W)) * 100;
 
 	\Issue the ^EndTrial Z-Pulse and switch off the nosepoke light
 	Z^Reward; OFF Z(8) ---> S5
@@ -544,7 +569,10 @@ S5,	\State 5 records perseverant responses during the ITI following a short cue
 	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987;
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD H(Y), P(W) ---> SX
+	SET Y = X(21); ADD H(Y), P(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S14
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
 		@SHORT: ---> S3
@@ -560,7 +588,10 @@ S6,	\State 6 records premature incorrect responses during a long cue
 	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987;
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD I(Y), O(W) ---> SX
+	SET Y = X(21); ADD I(Y), O(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S15
+		@NULL: ---> SX
 
 	#Z^EndCS: ON Z(8) ---> S7
 
@@ -575,18 +606,23 @@ S7,	\State 7 records an incorrect response to a long cue
 	SHOW 3, Incorrect Responses, A(1);
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD I(Y), L(W);
+	SET Y = X(21), T = W + 3*X(6); ADD I(Y), L(W), K(T);
 
-	\Calculate the %Correct, %B (incorrect) and %omissions
+	\Calculate the %Correct, %Incorrect and %Omissions
 	SET A(19) = A(0) / (A(0) + A(1) + A(2)) * 100;
 	SET A(20) = A(1) / (A(0) + A(1) + A(2)) * 100;
 	SET A(21) = A(2) / (A(0) + A(1) + A(2)) * 100;
 
-	\Calculate the %C, %B and %O for this cue length
+	\Calculate the %Correct, %Incorrect and %Omissions for this cue length
 	SET Y = W + X(6);
 	SET K(Y) = K(W) / (K(W) + L(W) + M(W)) * 100;
 	SET L(Y) = L(W) / (K(W) + L(W) + M(W)) * 100;
 	SET M(Y) = M(W) / (K(W) + L(W) + M(W)) * 100;
+	
+	\Calculate %A (%short-paired), %B (%long-paired) for this cue length
+	SET Y = W + 4*X(6);
+	SET K(Y) = K(T) / (K(T) + L(T) + M(W)) * 100;
+	SET L(Y) = L(T) / (K(T) + L(T) + M(W)) * 100;
 
 	\Issue the ^EndTrial Z-Pulse and switch off the nosepoke light
 	Z^EndTrial; OFF Z(8) ---> S8	
@@ -601,7 +637,10 @@ S8,	\State 8 records perseverant responses during the ITI following a long cue
 	SET Y = X(18); SET E(Y) = X(1); ADD X(18); SET Y = X(18); SET E(Y) = -987.987;
 
 	\Record nosepoke in the relevant trial bin and according to cue length
-	SET Y = X(21); ADD I(Y), Q(W) ---> SX
+	SET Y = X(21); ADD I(Y), Q(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S16
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
 		@SHORT: ---> S3
@@ -633,9 +672,59 @@ S10,	\State 10 records incorrect nosepokes to a long cue during a forced trial
 
 	#Z^Shutdown: ---> S11
 
-S11,	\State 9 is a holding state
+S11,	\State 11 is a holding state
 	#START: ---> SX
+	
+S12,	\Response timeout (RESPONSETO) wait for S2
+	X(22)#T: ---> S2
 
+	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
+		@SHORT: ---> S3
+		@LONG: ---> S6
+	#Z^IntermediateShort: ---> S3
+	#Z^IntermediateLong: ---> S6
+
+	#Z^Shutdown: ---> S11
+
+S13,	\Response timeout (RESPONSETO) wait for S3
+	X(22)#T: ---> S3
+	
+	#Z^EndCS: ON Z(8) ---> S4
+	#Z^ForcedTrial: ON Z(8) ---> S9
+
+	#Z^Shutdown: ---> S11
+	
+S14,	\Response timeout (RESPONSETO) wait for S5
+	X(22)#T: ---> S5
+	
+	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
+		@SHORT: ---> S3
+		@LONG: ---> S6
+	#Z^IntermediateShort: ---> S3
+	#Z^IntermediateLong: ---> S6
+
+	#Z^Shutdown: ---> S11
+	
+S15,	\Response timeout (RESPONSETO) wait for S6
+	X(22)#T: ---> S6
+	
+	#Z^EndCS: ON Z(8) ---> S7
+
+	#Z^ForcedTrial: ---> S10
+
+	#Z^Shutdown: ---> S11
+	
+S16,	\Response timeout (RESPONSETO) wait for S8
+	X(22)#T: ---> S8
+	
+	#Z^StartCS: IF U(W) < X(5) [@SHORT, @LONG]
+		@SHORT: ---> S3
+		@LONG: ---> S6
+	#Z^IntermediateShort: ---> S3
+	#Z^IntermediateLong: ---> S6
+
+	#Z^Shutdown: ---> S11
+	
 \-------------------------------------------------------------------------
 \State Set 5 - Long-paired Nosepoke
 
@@ -648,7 +737,10 @@ S1,	\State 1 waits for the start command
 S2,	\State 2 waits to shift to the cue
 	#RZ(7): ADD A(13); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventPreCSLong;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
-	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987 ---> SX
+	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S12
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
 		@LONG: ---> S3
@@ -663,7 +755,10 @@ S3,	\State 3 records premature correct responses during long cues
 	#RZ(7): ADD A(6), A(7); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventPremCorrect;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
-	SET Y = X(21); ADD H(Y), N(W) ---> SX
+	SET Y = X(21); ADD H(Y), N(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S13
+		@NULL: ---> SX
 
 	#Z^EndCS: ON Z(9) ---> S4
 	#Z^ForcedTrial: ON Z(9) ---> S9
@@ -675,18 +770,23 @@ S4,	\State 4 records a correct response to a long cue
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
 	SHOW 2, Correct Responses, A(0);
-	SET Y = X(21); ADD H(Y), K(W);
+	SET Y = X(21), T = W + 3*X(6); ADD H(Y), K(W), L(T);
 
-	\Calculate the %Correct, %B (incorrect) and %omissions
+	\Calculate the %Correct, %Incorrect and %Omissions
 	SET A(19) = A(0) / (A(0) + A(1) + A(2)) * 100;
 	SET A(20) = A(1) / (A(0) + A(1) + A(2)) * 100;
 	SET A(21) = A(2) / (A(0) + A(1) + A(2)) * 100;
 
-	\Calculate the %C, %B and %O for this cue length
+	\Calculate the %Correct, %Incorrect and %Omissions for this cue length
 	SET Y = W + X(6);
 	SET K(Y) = K(W) / (K(W) + L(W) + M(W)) * 100;
 	SET L(Y) = L(W) / (K(W) + L(W) + M(W)) * 100;
 	SET M(Y) = M(W) / (K(W) + L(W) + M(W)) * 100;
+	
+	\Calculate %A (%short-paired), %B (%long-paired) for this cue length
+	SET Y = W + 4*X(6);
+	SET K(Y) = K(T) / (K(T) + L(T) + M(W)) * 100;
+	SET L(Y) = L(T) / (K(T) + L(T) + M(W)) * 100;
 
 	\Issue the ^EndTrial Z-Pulse and switch off the nosepoke light
 	Z^Reward; OFF Z(9) ---> S5
@@ -699,7 +799,10 @@ S5,	\State 5 records perseverant responses during the ITI following a long cue
 	#RZ(7): ADD A(9), A(10); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventPersevCorrect;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
-	SET Y = X(21); ADD H(Y), P(W) ---> SX
+	SET Y = X(21); ADD H(Y), P(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S14
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
 		@LONG: ---> S3
@@ -714,7 +817,10 @@ S6,	\State 6 records premature incorrect responses during a short cue
 	#RZ(7): ADD A(6), A(8); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventPremIncorrect;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
-	SET Y = X(21); ADD I(Y), O(W) ---> SX
+	SET Y = X(21); ADD I(Y), O(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S15
+		@NULL: ---> SX
 
 	#Z^EndCS: ON Z(9) ---> S7
 	#Z^ForcedTrial: ---> S10
@@ -726,18 +832,23 @@ S7,	\State 7 records an incorrect response to a short cue
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
 	SHOW 3, Incorrect Responses, A(1);
-	SET Y = X(21); ADD I(Y), L(W);
+	SET Y = X(21), T = W + 3*X(6); ADD I(Y), L(W), L(T);
 
-	\Calculate the %Correct, %B (incorrect) and %omissions
+	\Calculate the %Correct, %Incorrect and %Omissions
 	SET A(19) = A(0) / (A(0) + A(1) + A(2)) * 100;
 	SET A(20) = A(1) / (A(0) + A(1) + A(2)) * 100;
 	SET A(21) = A(2) / (A(0) + A(1) + A(2)) * 100;
 
-	\Calculate the %C, %B and %O for this cue length
+	\Calculate the %Correct, %Incorrect and %Omissions for this cue length
 	SET Y = W + X(6);
 	SET K(Y) = K(W) / (K(W) + L(W) + M(W)) * 100;
 	SET L(Y) = L(W) / (K(W) + L(W) + M(W)) * 100;
 	SET M(Y) = M(W) / (K(W) + L(W) + M(W)) * 100;
+	
+	\Calculate %A (%short-paired), %B (%long-paired) for this cue length
+	SET Y = W + 4*X(6);
+	SET K(Y) = K(T) / (K(T) + L(T) + M(W)) * 100;
+	SET L(Y) = L(T) / (K(T) + L(T) + M(W)) * 100;
 
 	\Issue the ^EndTrial Z-Pulse and switch off the nosepoke light
 	Z^EndTrial; OFF Z(9) ---> S8
@@ -750,7 +861,10 @@ S8,	\State 8 records perseverant responses during the ITI following a short cue
 	#RZ(7): ADD A(9), A(11); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventPersevIncorrect;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(19); SET F(Y) = X(1); ADD X(19); SET Y = X(19); SET F(Y) = -987.987;
-	SET Y = X(21); ADD I(Y), Q(W) ---> SX
+	SET Y = X(21); ADD I(Y), Q(W);
+	IF Z(13) > 1.5 [@RESPONSETO, @NULL]
+		@RESPONSETO: ---> S16
+		@NULL: ---> SX
 
 	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
 		@LONG: ---> S3
@@ -783,10 +897,61 @@ S10,	\State 10 records incorrect nosepokes to a short cue during a forced trial
 
 	#Z^Shutdown: ---> S11
 
-S11,	\State 10 is a holding state
+S11,	\State 11 is a holding state
 	#START: ---> SX
 
+S12,	\Response timeout (RESPONSETO) wait for S2
+	X(22)#T: ---> S2
+	
+	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
+		@LONG: ---> S3
+		@SHORT: ---> S6
 
+	#Z^IntermediateLong: ---> S3
+	#Z^IntermediateShort: ---> S6
+
+	#Z^Shutdown: ---> S11
+
+S13,	\Response timeout (RESPONSETO) wait for S3
+	X(22)#T: ---> S3
+	
+	#Z^EndCS: ON Z(9) ---> S4
+	#Z^ForcedTrial: ON Z(9) ---> S9
+
+	#Z^Shutdown: ---> S11
+	
+S14,	\Response timeout (RESPONSETO) wait for S5
+	X(22)#T: ---> S5
+	
+	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
+		@LONG: ---> S3
+		@SHORT: ---> S6
+
+	#Z^IntermediateLong: ---> S3
+	#Z^IntermediateShort: ---> S6
+
+	#Z^Shutdown: ---> S11
+	
+S15,	\Response timeout (RESPONSETO) wait for S6
+	X(22)#T: ---> S6
+	
+	#Z^EndCS: ON Z(9) ---> S7
+	#Z^ForcedTrial: ---> S10
+
+	#Z^Shutdown: ---> S11
+	
+S16,	\Response timeout (RESPONSETO) wait for S8
+	X(22)#T: ---> S8
+	
+	#Z^StartCS: IF U(W) > X(5) [@LONG, @SHORT]
+		@LONG: ---> S3
+		@SHORT: ---> S6
+
+	#Z^IntermediateLong: ---> S3
+	#Z^IntermediateShort: ---> S6
+
+	#Z^Shutdown: ---> S11
+	
 \-------------------------------------------------------------------------
 \State Set 6 - Magazine Entries
 
@@ -949,4 +1114,35 @@ S6,	\State 6 waits during a forced trial - the trial management system deals wit
 			@ITI: SET X(10) = X(4) / 1"; SHOW 5, Time to Session End, X(10) ---> S5
 
 S7,	\State 7 is a holding state
+	#START: ---> SX
+	
+\-------------------------------------------------------------------------
+\State Set 11 - High Frequency Handler
+
+S.S.11,
+S1,	\State 1 waits for the start command
+	#START: IF Z(13) < 0.5 [@NONE, @CHECK]
+		@NONE: SET X(22) = -987.987 ---> S3
+		@CHECK: IF Z(13) < 1.5 [@WARN, @REMOVE]
+			@WARN: SET X(22) = Z(14) - 1 ---> S2
+			@REMOVE: SET X(22) = 1" / Z(14) ---> S3
+			
+S2,	\State 2 will add warnings if nosepokes occur too quickly
+	#RZ(6): SET Y = X(18) - 1; IF Y > (X(22) + 1) [@CHECK, @NULL]
+		@CHECK: SET X(23) = E(Y); SET Y = Y - X(22);
+		SET X(24) = E(Y); IF X(23) - X(24) < 1 [@WARN, @OK]
+			@WARN: ADD A(26) ---> SX
+			@OK: ---> SX
+		@NULL: ---> SX
+
+	#RZ(7): SET Y = X(19) - 1; IF Y > (X(22 + 1) [@CHECK, @NULL]
+		@CHECK: SET X(23) = F(Y); SET Y = Y - X(22);
+		SET X(24) = F(Y); IF X(23) - X(24) < 1 [@WARN, @OK]
+			@WARN: ADD A(27) ---> SX
+			@OK: ---> SX
+		@NULL: ---> SX
+
+	#Z^Shutdown: ---> S3
+
+S3,	\State 3 is a holding state
 	#START: ---> SX
