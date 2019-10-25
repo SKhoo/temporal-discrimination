@@ -1,6 +1,6 @@
 \-------------------------------------------------------------------------
 \ TD1 Temporal Discrimination Training
-\ Version: 1.41
+\ Version: 1.42
 \ Created by Shaun Khoo (25 July 2019)
 \ >('.')<
 \ http://orcid.org/0000-0002-0972-3788
@@ -23,7 +23,7 @@
 ^ForcedTimeLimit = 300	\Time in seconds until a forced trial will end. Set to 0 for unlimited.
 ^HighHzHandling = 1	\0 = None, 1 = Warn, 2 = Remove
 ^MaxResponseHz = 5	\Maximum response frequency; if greater than this, will add to warnings or ignore nosepoke	
-^Version = 141		\Version number, will be divided by 100
+^Version = 142		\Version number, will be divided by 100
 
 \Inputs
 ^LeftNose = 1
@@ -301,7 +301,7 @@ S1,	\State 1 waits for the start command
 		SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 		ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 		SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-		ON ^Houselight; ADD A(W+28), X(8);		
+		ON ^Houselight, ^MagLight; ADD A(W+28), X(8);		
 		IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
 			@INTERMEDIATE: WITHPI = 5000 [@SHORT, @LONG]
 				@SHORT: Z^IntermediateShort ---> S3
@@ -313,7 +313,7 @@ S2,	\State 2 waits to present the first cue
 	SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-	ON ^Houselight; ADD A(W+28), X(8); IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
+	ON ^Houselight, ^MagLight; ADD A(W+28), X(8); IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
 		@INTERMEDIATE: WITHPI = 5000 [@SHORT, @LONG]
 			@SHORT: Z^IntermediateShort ---> S3
 			@LONG: Z^IntermediateLong ---> S3
@@ -400,7 +400,7 @@ S5,	\State 5 waits to deliver the next cue
 		SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 		ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 		SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-		ON ^Houselight; ADD A(W+28), X(8), X(21);
+		ON ^Houselight, ^MagLight; ADD A(W+28), X(8), X(21);
 		SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 		SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 		IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -414,7 +414,7 @@ S5,	\State 5 waits to deliver the next cue
 			SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 			ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 			SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-			ON ^Houselight; ADD A(W+28), X(8), X(21);
+			ON ^Houselight, ^MagLight; ADD A(W+28), X(8), X(21);
 			SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 			SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 			IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -428,7 +428,7 @@ S5,	\State 5 waits to deliver the next cue
 				SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventCue + U(W) / 100;
 				ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 				SET Y = X(17); SET D(Y) = X(1); ADD X(17); SET Y = X(17); SET D(Y) = -987.987;
-				ON ^Houselight; ADD A(W+28), X(8), X(21);
+				ON ^Houselight, ^MagLight; ADD A(W+28), X(8), X(21);
 				SET Y = X(21); SET H(Y) = 0, I(Y) = 0, J(Y) = 0;
 				SET H(Y+1) = -987.987, I(Y+1) = -987.987, J(Y+1) = -987.987;
 				IF U(W) = X(5) [@INTERMEDIATE, @PROCEED]
@@ -985,7 +985,8 @@ S4,	\State 4 records magazine entries during nosepoke availability
 	SET Y = X(20); SET G(Y) = X(1); ADD X(20); SET Y = X(20); SET G(Y) = -987.987;
 	SET Y = X(21); ADD J(Y), R(W) ---> SX
 
-	#Z^EndTrial ! #Z^Reward: ---> S5
+	#Z^EndTrial: OFF ^MagLight ---> S5
+	#Z^Reward: ---> S5
 
 	#Z^Shutdown: ---> S6
 
@@ -993,7 +994,7 @@ S5,	\State 5 records magazine entries during the ITI following the cue
 	#R^Magazine: ADD A(14), A(17); SET Y = X(16); SET B(Y) = X(1), C(Y) = ^EventITIMagazine;
 	ADD X(16); SET Y = X(16); SET B(Y) = -987.987, C(Y) = -987.987;
 	SET Y = X(20); SET G(Y) = X(1); ADD X(20); SET Y = X(20); SET G(Y) = -987.987;
-	SET Y = X(21); ADD J(Y) ---> SX
+	SET Y = X(21); ADD J(Y); OFF ^MagLight ---> SX
 
 	#Z^StartCS: ---> S3
 	#Z^IntermediateLong ! #Z^IntermediateShort: ---> S3
